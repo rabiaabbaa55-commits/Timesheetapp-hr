@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useApp } from "@/lib/store";
 
 export default function TopNav() {
   const pathname = usePathname();
-  const router = useRouter();
   const { currentUser, notifications, markAllRead, logout } = useApp();
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -23,7 +22,6 @@ export default function TopNav() {
 
   function handleLogout() {
     logout();
-    router.push("/login");
   }
 
   function toggleNotifications() {

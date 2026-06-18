@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { projects } from "@/lib/mock-data";
-import { DailyLog, LeaveType } from "@/lib/types";
+import { DailyLog, LeaveType, Project } from "@/lib/types";
 
 const LEAVE_OPTIONS: { value: LeaveType; label: string }[] = [
   { value: "none", label: "None (working day)" },
@@ -15,11 +14,13 @@ const LEAVE_OPTIONS: { value: LeaveType; label: string }[] = [
 export default function DayEntryModal({
   date,
   existing,
+  projects,
   onClose,
   onSave,
 }: {
   date: string;
   existing: DailyLog | null;
+  projects: Project[];
   onClose: () => void;
   onSave: (log: DailyLog) => void;
 }) {
@@ -33,7 +34,7 @@ export default function DayEntryModal({
   function handleSave(status: "draft" | "submitted") {
     onSave({
       date,
-      userId: existing?.userId ?? "u1",
+      userId: existing?.userId ?? "",
       clockIn: clockIn || null,
       clockOut: clockOut || null,
       totalHours: parseFloat(totalHours) || 0,

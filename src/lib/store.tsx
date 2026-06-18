@@ -7,7 +7,9 @@ import {
   useEffect,
   useState,
 } from "react";
-import { users as initialUsers } from "./mock-data";
+import { useRouter } from "next/navigation";
+import { createClient } from "./supabase/client";
+import { fetchNotifications, insertNotification, markNotificationsRead } from "./queries";
 import { User } from "./types";
 
 export type Notification = {
@@ -19,76 +21,112 @@ export type Notification = {
 
 type AppState = {
   currentUser: User | null;
-  users: User[];
+  loading: boolean;
   notifications: Notification[];
-  login: (email: string) => boolean;
-  logout: () => void;
-  notifyAdmins: (message: string) => void;
-  markAllRead: () => void;
+  logout: () => Promise<void>;
+  notifyAdmins: (message: string) => Promise<void>;
+  markAllRead: () => Promise<void>;
 };
 
 const AppContext = createContext<AppState | null>(null);
 
-const STORAGE_KEY = "timesheet:currentUserId";
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const supabase = createClient();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    const { data: authData } = await supabase.auth.getUser();
+    if (!authData.user) {
+      setCurrentUser(null);
+      setLoading(false);
+      return;
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name, email, role, status, hourly_rate")
+      .eq("id", authData.user.id)
+      .single();
+
+    if (profile) {
+      setCurrentUser({
+        id: profile.id,
+        name: profile.full_name,
+        email: profile.email,
+        role: profile.role,
+        status: profile.status,
+        hourlyRate: profile.hourly_rate,
+      });
+    } else {
+      setCurrentUser(null);
+    }
+    setLoading(false);
+  }, [supabase]);
 
   useEffect(() => {
-    const savedId = localStorage.getItem(STORAGE_KEY);
-    if (savedId) {
-      const match = initialUsers.find((u) => u.id === savedId);
-      if (match) setCurrentUser(match);
-    }
-    setHydrated(true);
-  }, []);
+    loadProfile();
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      loadProfile();
+    });
+    return () => listener.subscription.unsubscribe();
+  }, [loadProfile, supabase]);
 
-  const login = useCallback((email: string) => {
-    const match = initialUsers.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+  const loadNotifications = useCallback(async () => {
+    if (!currentUser || currentUser.role !== "admin") return;
+    const rows = await fetchNotifications(supabase);
+    setNotifications(
+      rows.map((r) => ({ id: r.id, message: r.message, createdAt: r.created_at, read: r.read }))
     );
-    if (!match) return false;
-    setCurrentUser(match);
-    localStorage.setItem(STORAGE_KEY, match.id);
-    return true;
-  }, []);
+  }, [supabase, currentUser]);
 
-  const logout = useCallback(() => {
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "admin") return;
+    loadNotifications();
+
+    const channel = supabase
+      .channel("notifications-feed")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (payload) => {
+          const row = payload.new as { id: string; message: string; created_at: string; read: boolean };
+          setNotifications((prev) => [
+            { id: row.id, message: row.message, createdAt: row.created_at, read: row.read },
+            ...prev,
+          ]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, currentUser, loadNotifications]);
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-  }, []);
+    router.push("/login");
+    router.refresh();
+  }, [supabase, router]);
 
-  const notifyAdmins = useCallback((message: string) => {
-    setNotifications((prev) => [
-      {
-        id: `n${Date.now()}`,
-        message,
-        createdAt: new Date().toISOString(),
-        read: false,
-      },
-      ...prev,
-    ]);
-  }, []);
+  const notifyAdmins = useCallback(
+    async (message: string) => {
+      await insertNotification(supabase, message);
+    },
+    [supabase]
+  );
 
-  const markAllRead = useCallback(() => {
+  const markAllRead = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
-
-  if (!hydrated) return null;
+    await markNotificationsRead(supabase);
+  }, [supabase]);
 
   return (
     <AppContext.Provider
-      value={{
-        currentUser,
-        users: initialUsers,
-        notifications,
-        login,
-        logout,
-        notifyAdmins,
-        markAllRead,
-      }}
+      value={{ currentUser, loading, notifications, logout, notifyAdmins, markAllRead }}
     >
       {children}
     </AppContext.Provider>

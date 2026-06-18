@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MONTH_NAMES, daysInMonth, isWeekend, toDateKey } from "@/lib/date-utils";
-import { holidays, projects, sampleLogs } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
 import { useApp } from "@/lib/store";
-import { DailyLog } from "@/lib/types";
+import { fetchHolidays, fetchLogsForUser, fetchProjects, saveLog } from "@/lib/queries";
+import { DailyLog, Project } from "@/lib/types";
 import DayEntryModal from "./DayEntryModal";
-
-const holidaysByDate = new Map(holidays.map((h) => [h.date, h.name]));
-const projectsById = new Map(projects.map((p) => [p.id, p.name]));
 
 const statusBadge: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
@@ -19,23 +17,45 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function MonthView({ monthKey }: { monthKey: string }) {
+  const supabase = createClient();
   const { currentUser, notifyAdmins } = useApp();
   const [year, monthNum] = monthKey.split("-").map(Number);
   const month = monthNum - 1;
   const numDays = daysInMonth(year, month);
 
-  const [logs, setLogs] = useState<Record<string, DailyLog>>(() => {
-    const map: Record<string, DailyLog> = {};
-    for (const log of sampleLogs) map[log.date] = log;
-    return map;
-  });
+  const [logs, setLogs] = useState<Record<string, DailyLog>>({});
+  const [holidaysByDate, setHolidaysByDate] = useState<Map<string, string>>(new Map());
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeDate, setActiveDate] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  function handleSave(log: DailyLog) {
-    if (currentUser) log = { ...log, userId: currentUser.id };
+  const projectsById = new Map(projects.map((p) => [p.id, p.name]));
+
+  const load = useCallback(async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    const [logMap, holidayRows, projectRows] = await Promise.all([
+      fetchLogsForUser(supabase, currentUser.id, monthKey),
+      fetchHolidays(supabase),
+      fetchProjects(supabase),
+    ]);
+    setLogs(logMap);
+    setHolidaysByDate(new Map(holidayRows.map((h) => [h.date, h.name])));
+    setProjects(projectRows);
+    setLoading(false);
+  }, [supabase, currentUser, monthKey]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function handleSave(log: DailyLog) {
+    if (!currentUser) return;
+    log = { ...log, userId: currentUser.id };
+    await saveLog(supabase, log);
     setLogs((prev) => ({ ...prev, [log.date]: log }));
     setActiveDate(null);
-    if (log.status === "submitted" && currentUser) {
+    if (log.status === "submitted") {
       notifyAdmins(
         `${currentUser.name} (${currentUser.role}) submitted hours for ${log.date} — ${log.totalHours}h`
       );
@@ -46,6 +66,10 @@ export default function MonthView({ monthKey }: { monthKey: string }) {
     .filter((l) => l.date.startsWith(monthKey))
     .reduce((sum, l) => sum + l.totalHours, 0);
   const totalEarned = currentUser ? totalHours * currentUser.hourlyRate : 0;
+
+  if (loading) {
+    return <p className="text-sm text-slate-500">Loading…</p>;
+  }
 
   return (
     <div>
@@ -143,6 +167,7 @@ export default function MonthView({ monthKey }: { monthKey: string }) {
         <DayEntryModal
           date={activeDate}
           existing={logs[activeDate] ?? null}
+          projects={projects}
           onClose={() => setActiveDate(null)}
           onSave={handleSave}
         />

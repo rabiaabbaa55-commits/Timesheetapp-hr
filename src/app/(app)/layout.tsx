@@ -1,19 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import TopNav from "@/components/TopNav";
 import { useApp } from "@/lib/store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { currentUser } = useApp();
-  const router = useRouter();
+  const { currentUser, loading } = useApp();
 
-  useEffect(() => {
-    if (!currentUser) router.replace("/login");
-  }, [currentUser, router]);
-
-  if (!currentUser) return null;
+  if (loading || !currentUser) return null;
 
   return (
     <div className="min-h-screen bg-slate-50">

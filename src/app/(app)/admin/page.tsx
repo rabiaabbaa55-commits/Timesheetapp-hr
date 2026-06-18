@@ -1,46 +1,157 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { holidays, projects as initialProjects, sampleLogs, users as initialUsers } from "@/lib/mock-data";
-import { Project, User } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useApp } from "@/lib/store";
+import {
+  addHoliday,
+  addProject,
+  fetchApprovedHoursByUser,
+  fetchHolidays,
+  fetchPendingLogs,
+  fetchProfiles,
+  fetchProjects,
+  removeHoliday,
+  removeProject,
+  setLogStatus,
+  updateHourlyRate,
+} from "@/lib/queries";
+import { DailyLog, Project, Role, User } from "@/lib/types";
 
 const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function AdminPage() {
+  const supabase = createClient();
+  const { currentUser } = useApp();
   const [tab, setTab] = useState<Tab>("People");
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [newProjectName, setNewProjectName] = useState("");
 
-  const pendingLogs = sampleLogs.filter((l) => l.status === "submitted");
+  const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
+  const [pendingLogs, setPendingLogs] = useState<{ log: DailyLog; employeeName: string }[]>([]);
+  const [approvedHours, setApprovedHours] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+  const [newHolidayName, setNewHolidayName] = useState("");
+
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState<Role>("employee");
+  const [inviteRate, setInviteRate] = useState("0");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    const [u, p, h, pending, hours] = await Promise.all([
+      fetchProfiles(supabase),
+      fetchProjects(supabase),
+      fetchHolidays(supabase),
+      fetchPendingLogs(supabase),
+      fetchApprovedHoursByUser(supabase),
+    ]);
+    setUsers(u);
+    setProjects(p);
+    setHolidays(h);
+    setPendingLogs(pending);
+    setApprovedHours(hours);
+    setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
 
   const payroll = useMemo(
     () =>
       users
         .filter((u) => u.role !== "admin")
         .map((u) => {
-          const approvedHours = sampleLogs
-            .filter((l) => l.userId === u.id && l.status === "approved")
-            .reduce((sum, l) => sum + l.totalHours, 0);
-          return { user: u, hours: approvedHours, total: approvedHours * u.hourlyRate };
+          const hours = approvedHours[u.id] ?? 0;
+          return { user: u, hours, total: hours * u.hourlyRate };
         }),
-    [users]
+    [users, approvedHours]
   );
 
-  function updateRate(userId: string, rate: number) {
+  async function updateRate(userId: string, rate: number) {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, hourlyRate: rate } : u)));
+    try {
+      await updateHourlyRate(supabase, userId, rate);
+    } catch {
+      loadAll();
+    }
   }
 
-  function addProject() {
+  async function handleAddProject() {
     const name = newProjectName.trim();
     if (!name) return;
-    setProjects((prev) => [...prev, { id: `p${Date.now()}`, name }]);
+    await addProject(supabase, name);
     setNewProjectName("");
+    loadAll();
   }
 
-  function removeProject(id: string) {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
+  async function handleRemoveProject(id: string) {
+    await removeProject(supabase, id);
+    loadAll();
+  }
+
+  async function handleAddHoliday() {
+    if (!newHolidayDate || !newHolidayName.trim()) return;
+    await addHoliday(supabase, newHolidayDate, newHolidayName.trim());
+    setNewHolidayDate("");
+    setNewHolidayName("");
+    loadAll();
+  }
+
+  async function handleRemoveHoliday(id: string) {
+    await removeHoliday(supabase, id);
+    loadAll();
+  }
+
+  async function handleDecision(userId: string, date: string, status: "approved" | "rejected") {
+    if (!currentUser) return;
+    await setLogStatus(supabase, userId, date, status, currentUser.id);
+    loadAll();
+  }
+
+  async function handleInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteError("");
+    if (!inviteEmail.trim() || !inviteName.trim()) {
+      setInviteError("Name and email are required.");
+      return;
+    }
+    setInviteLoading(true);
+    const res = await fetch("/api/admin/invite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: inviteEmail.trim(),
+        fullName: inviteName.trim(),
+        role: inviteRole,
+        hourlyRate: parseFloat(inviteRate) || 0,
+      }),
+    });
+    const body = await res.json();
+    setInviteLoading(false);
+    if (!res.ok) {
+      setInviteError(body.error ?? "Invite failed");
+      return;
+    }
+    setShowInvite(false);
+    setInviteEmail("");
+    setInviteName("");
+    setInviteRole("employee");
+    setInviteRate("0");
+    loadAll();
+  }
+
+  if (loading) {
+    return <p className="text-sm text-slate-500">Loading…</p>;
   }
 
   return (
@@ -73,7 +184,6 @@ export default function AdminPage() {
                 <th className="px-4 py-2">Role</th>
                 <th className="px-4 py-2">Wage / hr</th>
                 <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -109,19 +219,72 @@ export default function AdminPage() {
                       {u.status}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    <button className="text-sm font-medium text-slate-700 hover:text-slate-900">
-                      Manage
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="border-t border-slate-100 px-4 py-3">
-            <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-              + Invite employee / contractor
-            </button>
+            {!showInvite ? (
+              <button
+                onClick={() => setShowInvite(true)}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                + Invite employee / contractor
+              </button>
+            ) : (
+              <form onSubmit={handleInvite} className="grid max-w-xl grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Full name"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="col-span-2 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                />
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as Role)}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                >
+                  <option value="employee">Employee</option>
+                  <option value="contractor">Contractor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-slate-500">$/hr</span>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={inviteRate}
+                    onChange={(e) => setInviteRate(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                  />
+                </div>
+                {inviteError && <p className="col-span-2 text-sm text-red-600">{inviteError}</p>}
+                <div className="col-span-2 flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={inviteLoading}
+                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {inviteLoading ? "Sending…" : "Send invite"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowInvite(false)}
+                    className="rounded-md border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -142,27 +305,30 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {pendingLogs.map((log) => {
-                  const user = users.find((u) => u.id === log.userId);
-                  return (
-                    <tr key={log.date} className="border-t border-slate-100">
-                      <td className="px-4 py-2 text-slate-700">{log.date}</td>
-                      <td className="px-4 py-2 text-slate-700">{user?.name}</td>
-                      <td className="px-4 py-2 text-slate-700">{log.totalHours}</td>
-                      <td className="px-4 py-2 text-slate-500">{log.notes}</td>
-                      <td className="px-4 py-2 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button className="rounded-md border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50">
-                            Approve
-                          </button>
-                          <button className="rounded-md border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50">
-                            Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {pendingLogs.map(({ log, employeeName }) => (
+                  <tr key={`${log.userId}-${log.date}`} className="border-t border-slate-100">
+                    <td className="px-4 py-2 text-slate-700">{log.date}</td>
+                    <td className="px-4 py-2 text-slate-700">{employeeName}</td>
+                    <td className="px-4 py-2 text-slate-700">{log.totalHours}</td>
+                    <td className="px-4 py-2 text-slate-500">{log.notes}</td>
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleDecision(log.userId, log.date, "approved")}
+                          className="rounded-md border border-emerald-200 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleDecision(log.userId, log.date, "rejected")}
+                          className="rounded-md border border-red-200 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
@@ -212,7 +378,7 @@ export default function AdminPage() {
                   <td className="px-4 py-2 font-medium text-slate-700">{p.name}</td>
                   <td className="px-4 py-2 text-right">
                     <button
-                      onClick={() => removeProject(p.id)}
+                      onClick={() => handleRemoveProject(p.id)}
                       className="text-sm font-medium text-red-600 hover:text-red-700"
                     >
                       Remove
@@ -227,12 +393,12 @@ export default function AdminPage() {
               type="text"
               value={newProjectName}
               onChange={(e) => setNewProjectName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addProject()}
+              onKeyDown={(e) => e.key === "Enter" && handleAddProject()}
               placeholder="New project name"
               className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
             />
             <button
-              onClick={addProject}
+              onClick={handleAddProject}
               className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               + Add project
@@ -253,11 +419,14 @@ export default function AdminPage() {
             </thead>
             <tbody>
               {holidays.map((h) => (
-                <tr key={h.date} className="border-t border-slate-100">
+                <tr key={h.id} className="border-t border-slate-100">
                   <td className="px-4 py-2 font-medium text-slate-700">{h.date}</td>
                   <td className="px-4 py-2 text-slate-500">{h.name}</td>
                   <td className="px-4 py-2 text-right">
-                    <button className="text-sm font-medium text-slate-700 hover:text-slate-900">
+                    <button
+                      onClick={() => handleRemoveHoliday(h.id)}
+                      className="text-sm font-medium text-red-600 hover:text-red-700"
+                    >
                       Remove
                     </button>
                   </td>
@@ -265,8 +434,24 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
-          <div className="border-t border-slate-100 px-4 py-3">
-            <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+          <div className="flex gap-2 border-t border-slate-100 px-4 py-3">
+            <input
+              type="date"
+              value={newHolidayDate}
+              onChange={(e) => setNewHolidayDate(e.target.value)}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+            />
+            <input
+              type="text"
+              value={newHolidayName}
+              onChange={(e) => setNewHolidayName(e.target.value)}
+              placeholder="Holiday name"
+              className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+            />
+            <button
+              onClick={handleAddHoliday}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
               + Add holiday
             </button>
           </div>
