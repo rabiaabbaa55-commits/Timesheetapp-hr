@@ -59,10 +59,19 @@ create policy "profiles_admin_insert"
 -- ── Projects ────────────────────────────────────────────────────────────
 create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  name text not null unique,
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'projects_name_key'
+  ) then
+    alter table projects add constraint projects_name_key unique (name);
+  end if;
+end $$;
 
 alter table projects enable row level security;
 
@@ -79,7 +88,7 @@ create policy "projects_admin_write"
 
 insert into projects (name) values
   ('Cleaning'), ('ACHR Office'), ('Concession Stand')
-on conflict do nothing;
+on conflict (name) do nothing;
 
 -- ── Holidays ────────────────────────────────────────────────────────────
 create table if not exists holidays (
