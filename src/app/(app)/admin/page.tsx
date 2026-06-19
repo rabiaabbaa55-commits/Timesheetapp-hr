@@ -44,6 +44,8 @@ export default function AdminPage() {
   const [inviteRate, setInviteRate] = useState("0");
   const [inviteError, setInviteError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [setupLink, setSetupLink] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -142,12 +144,24 @@ export default function AdminPage() {
       setInviteError(body.error ?? "Invite failed");
       return;
     }
-    setShowInvite(false);
+    setSetupLink(body.setupLink ?? "");
     setInviteEmail("");
     setInviteName("");
     setInviteRole("employee");
     setInviteRate("0");
     loadAll();
+  }
+
+  function closeInvite() {
+    setShowInvite(false);
+    setSetupLink("");
+    setLinkCopied(false);
+    setInviteError("");
+  }
+
+  async function copySetupLink() {
+    await navigator.clipboard.writeText(setupLink);
+    setLinkCopied(true);
   }
 
   if (loading) {
@@ -231,6 +245,34 @@ export default function AdminPage() {
               >
                 + Invite employee / contractor
               </button>
+            ) : setupLink ? (
+              <div className="max-w-xl space-y-3">
+                <p className="text-sm text-slate-700">
+                  Account created. Send this link to the new person so they can set their
+                  password — we don't rely on Supabase's email here, so send it however you like
+                  (email, text, Slack, etc).
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    readOnly
+                    value={setupLink}
+                    onFocus={(e) => e.target.select()}
+                    className="flex-1 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none"
+                  />
+                  <button
+                    onClick={copySetupLink}
+                    className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {linkCopied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <button
+                  onClick={closeInvite}
+                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Done
+                </button>
+              </div>
             ) : (
               <form onSubmit={handleInvite} className="grid max-w-xl grid-cols-2 gap-3">
                 <input
@@ -273,11 +315,11 @@ export default function AdminPage() {
                     disabled={inviteLoading}
                     className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
                   >
-                    {inviteLoading ? "Sending…" : "Send invite"}
+                    {inviteLoading ? "Creating…" : "Create account"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowInvite(false)}
+                    onClick={closeInvite}
                     className="rounded-md border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
                   >
                     Cancel

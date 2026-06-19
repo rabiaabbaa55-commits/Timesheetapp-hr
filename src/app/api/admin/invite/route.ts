@@ -27,17 +27,21 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const redirectTo = `${request.nextUrl.origin}/auth/set-password`;
 
-  const { data: invited, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo,
+  // Create the account directly rather than relying on Supabase's own invite
+  // email (the free tier's send quota is very low and easily exhausted).
+  // We generate a setup link ourselves and hand it back to the admin to send
+  // however they like.
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email,
+    email_confirm: true,
   });
-  if (inviteError || !invited.user) {
-    return NextResponse.json({ error: inviteError?.message ?? "Invite failed" }, { status: 400 });
+  if (createError || !created.user) {
+    return NextResponse.json({ error: createError?.message ?? "Account creation failed" }, { status: 400 });
   }
 
   const { error: profileError } = await admin.from("profiles").insert({
-    id: invited.user.id,
+    id: created.user.id,
     full_name: fullName,
     email,
     role,
@@ -48,5 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: profileError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true });
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+  });
+  if (linkError) {
+    return NextResponse.json({ error: linkError.message }, { status: 400 });
+  }
+
+  const setupLink = `${request.nextUrl.origin}/auth/confirm?token_hash=${linkData.properties.hashed_token}&type=invite`;
+
+  return NextResponse.json({ success: true, setupLink });
 }
