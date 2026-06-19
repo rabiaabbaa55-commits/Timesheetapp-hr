@@ -47,22 +47,28 @@ export default function AdminPage() {
   const [setupLink, setSetupLink] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    const [u, p, h, pending, hours] = await Promise.all([
-      fetchProfiles(supabase),
-      fetchProjects(supabase),
-      fetchHolidays(supabase),
-      fetchPendingLogs(supabase),
-      fetchApprovedHoursByUser(supabase),
-    ]);
-    setUsers(u);
-    setProjects(p);
-    setHolidays(h);
-    setPendingLogs(pending);
-    setApprovedHours(hours);
-    setLoading(false);
-  }, [supabase]);
+  const loadAll = useCallback(
+    async (showSpinner = true) => {
+      if (showSpinner) setLoading(true);
+      try {
+        const [u, p, h, pending, hours] = await Promise.all([
+          fetchProfiles(supabase),
+          fetchProjects(supabase),
+          fetchHolidays(supabase),
+          fetchPendingLogs(supabase),
+          fetchApprovedHoursByUser(supabase),
+        ]);
+        setUsers(u);
+        setProjects(p);
+        setHolidays(h);
+        setPendingLogs(pending);
+        setApprovedHours(hours);
+      } finally {
+        if (showSpinner) setLoading(false);
+      }
+    },
+    [supabase]
+  );
 
   useEffect(() => {
     loadAll();
@@ -128,28 +134,33 @@ export default function AdminPage() {
       return;
     }
     setInviteLoading(true);
-    const res = await fetch("/api/admin/invite", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: inviteEmail.trim(),
-        fullName: inviteName.trim(),
-        role: inviteRole,
-        hourlyRate: parseFloat(inviteRate) || 0,
-      }),
-    });
-    const body = await res.json();
-    setInviteLoading(false);
-    if (!res.ok) {
-      setInviteError(body.error ?? "Invite failed");
-      return;
+    try {
+      const res = await fetch("/api/admin/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          fullName: inviteName.trim(),
+          role: inviteRole,
+          hourlyRate: parseFloat(inviteRate) || 0,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setInviteError(body.error ?? "Invite failed");
+        return;
+      }
+      setSetupLink(body.setupLink ?? "");
+      setInviteEmail("");
+      setInviteName("");
+      setInviteRole("employee");
+      setInviteRate("0");
+      loadAll(false);
+    } catch {
+      setInviteError("Something went wrong talking to the server. Please try again.");
+    } finally {
+      setInviteLoading(false);
     }
-    setSetupLink(body.setupLink ?? "");
-    setInviteEmail("");
-    setInviteName("");
-    setInviteRole("employee");
-    setInviteRate("0");
-    loadAll();
   }
 
   function closeInvite() {
