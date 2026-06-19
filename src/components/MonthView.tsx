@@ -94,7 +94,52 @@ export default function MonthView({ monthKey }: { monthKey: string }) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      {/* Mobile: stacked cards, each with a full-width tap target */}
+      <div className="space-y-2 sm:hidden">
+        {Array.from({ length: numDays }, (_, i) => i + 1).map((day) => {
+          const dateKey = toDateKey(year, month, day);
+          const log = logs[dateKey];
+          const holiday = holidaysByDate.get(dateKey);
+          const weekend = isWeekend(year, month, day);
+
+          return (
+            <button
+              key={dateKey}
+              onClick={() => setActiveDate(dateKey)}
+              className={`block w-full rounded-lg border border-slate-200 bg-white p-3 text-left ${weekend ? "bg-slate-50/60" : ""}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-700">{dateKey}</span>
+                {log ? (
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${statusBadge[log.status]}`}
+                  >
+                    {log.status}
+                  </span>
+                ) : (
+                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                    {log ? "Edit" : "Add"}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                {holiday && (
+                  <span className="rounded bg-purple-100 px-1.5 py-0.5 text-purple-700">{holiday}</span>
+                )}
+                <span>
+                  {log?.clockIn && log?.clockOut ? `${log.clockIn} – ${log.clockOut}` : "No clock in/out"}
+                </span>
+                <span>{log?.totalHours ? `${log.totalHours}h` : null}</span>
+                {log && log.leaveType !== "none" && <span className="capitalize">{log.leaveType}</span>}
+                {log?.projectId && <span>{projectsById.get(log.projectId) ?? ""}</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Desktop/tablet: table */}
+      <div className="hidden overflow-x-auto rounded-lg border border-slate-200 bg-white sm:block">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
             <tr>
