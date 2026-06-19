@@ -32,16 +32,29 @@ export async function POST(request: NextRequest) {
   // email (the free tier's send quota is very low and easily exhausted).
   // We generate a setup link ourselves and hand it back to the admin to send
   // however they like.
+  let userId: string;
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     email_confirm: true,
   });
-  if (createError || !created.user) {
+
+  if (createError?.message?.includes("already been registered")) {
+    // Account already exists (e.g. an earlier invite attempt) — just make
+    // sure their profile is up to date and send a fresh setup link.
+    const { data: list, error: listError } = await admin.auth.admin.listUsers();
+    const existing = list?.users.find((u) => u.email === email);
+    if (listError || !existing) {
+      return NextResponse.json({ error: "Could not find the existing account" }, { status: 400 });
+    }
+    userId = existing.id;
+  } else if (createError || !created.user) {
     return NextResponse.json({ error: createError?.message ?? "Account creation failed" }, { status: 400 });
+  } else {
+    userId = created.user.id;
   }
 
-  const { error: profileError } = await admin.from("profiles").insert({
-    id: created.user.id,
+  const { error: profileError } = await admin.from("profiles").upsert({
+    id: userId,
     full_name: fullName,
     email,
     role,
