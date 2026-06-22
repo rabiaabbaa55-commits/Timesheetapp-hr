@@ -57,6 +57,11 @@ export async function fetchProfiles(supabase: SupabaseClient): Promise<User[]> {
   return (data as ProfileRow[]).map(toUser);
 }
 
+export async function updateUserRole(supabase: SupabaseClient, userId: string, role: Role) {
+  const { error } = await supabase.from("profiles").update({ role }).eq("id", userId);
+  if (error) throw error;
+}
+
 export async function updateHourlyRate(
   supabase: SupabaseClient,
   userId: string,

@@ -18,6 +18,7 @@ import {
   removeProject,
   setLogStatus,
   updateHourlyRate,
+  updateUserRole,
 } from "@/lib/queries";
 import { DailyLog, Project, Role, User } from "@/lib/types";
 
@@ -36,6 +37,7 @@ export default function AdminPage() {
   const [approvedLogs, setApprovedLogs] = useState<ApprovedLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [payrollMonth, setPayrollMonth] = useState("all");
+  const [deleteUserError, setDeleteUserError] = useState("");
 
   const [newProjectName, setNewProjectName] = useState("");
   const [newHolidayDate, setNewHolidayDate] = useState("");
@@ -120,6 +122,38 @@ export default function AdminPage() {
       await updateHourlyRate(supabase, userId, rate);
     } catch {
       loadAll();
+    }
+  }
+
+  async function handleRoleChange(userId: string, role: Role) {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
+    try {
+      await updateUserRole(supabase, userId, role);
+    } catch {
+      loadAll();
+    }
+  }
+
+  async function handleDeleteUser(userId: string, userName: string) {
+    if (currentUser?.id === userId) {
+      window.alert("You cannot delete your own account.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Delete ${userName}'s account? This permanently removes their login and all of their logged hours, and cannot be undone.`
+    );
+    if (!confirmed) return;
+    setDeleteUserError("");
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+      const body = await res.json();
+      if (!res.ok) {
+        setDeleteUserError(body.error ?? "Could not delete this account.");
+        return;
+      }
+      loadAll();
+    } catch {
+      setDeleteUserError("Something went wrong talking to the server. Please try again.");
     }
   }
 
@@ -238,6 +272,7 @@ export default function AdminPage() {
                 <th className="px-4 py-2">Role</th>
                 <th className="px-4 py-2">Wage / hr</th>
                 <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -245,7 +280,18 @@ export default function AdminPage() {
                 <tr key={u.id} className="border-t border-slate-100">
                   <td className="px-4 py-2 font-medium text-slate-700">{u.name}</td>
                   <td className="px-4 py-2 text-slate-500">{u.email}</td>
-                  <td className="px-4 py-2 capitalize text-slate-600">{u.role}</td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
+                      disabled={currentUser?.id === u.id}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm capitalize text-slate-700 outline-none focus:border-slate-900 disabled:opacity-60"
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="contractor">Contractor</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </td>
                   <td className="px-4 py-2">
                     {u.role === "admin" ? (
                       <span className="text-slate-400">—</span>
@@ -273,10 +319,25 @@ export default function AdminPage() {
                       {u.status}
                     </span>
                   </td>
+                  <td className="px-4 py-2 text-right">
+                    {currentUser?.id !== u.id && (
+                      <button
+                        onClick={() => handleDeleteUser(u.id, u.name)}
+                        className="text-sm font-medium text-red-600 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {deleteUserError && (
+            <p className="border-t border-slate-100 px-4 py-2 text-sm text-red-600">
+              {deleteUserError}
+            </p>
+          )}
           <div className="border-t border-slate-100 px-4 py-3">
             {!showInvite ? (
               <button
