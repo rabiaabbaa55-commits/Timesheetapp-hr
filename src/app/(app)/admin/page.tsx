@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useApp } from "@/lib/store";
+import { MONTH_NAMES } from "@/lib/date-utils";
 import {
   addHoliday,
   addProject,
-  fetchApprovedHoursByUser,
+  ApprovedLogRow,
+  deleteApprovedLogs,
+  fetchApprovedLogs,
   fetchHolidays,
   fetchPendingLogs,
   fetchProfiles,
@@ -30,8 +33,9 @@ export default function AdminPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [pendingLogs, setPendingLogs] = useState<{ log: DailyLog; employeeName: string }[]>([]);
-  const [approvedHours, setApprovedHours] = useState<Record<string, number>>({});
+  const [approvedLogs, setApprovedLogs] = useState<ApprovedLogRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [payrollMonth, setPayrollMonth] = useState("all");
 
   const [newProjectName, setNewProjectName] = useState("");
   const [newHolidayDate, setNewHolidayDate] = useState("");
@@ -51,18 +55,18 @@ export default function AdminPage() {
     async (showSpinner = true) => {
       if (showSpinner) setLoading(true);
       try {
-        const [u, p, h, pending, hours] = await Promise.all([
+        const [u, p, h, pending, logs] = await Promise.all([
           fetchProfiles(supabase),
           fetchProjects(supabase),
           fetchHolidays(supabase),
           fetchPendingLogs(supabase),
-          fetchApprovedHoursByUser(supabase),
+          fetchApprovedLogs(supabase),
         ]);
         setUsers(u);
         setProjects(p);
         setHolidays(h);
         setPendingLogs(pending);
-        setApprovedHours(hours);
+        setApprovedLogs(logs);
       } finally {
         if (showSpinner) setLoading(false);
       }
@@ -74,6 +78,20 @@ export default function AdminPage() {
     loadAll();
   }, [loadAll]);
 
+  const payrollMonths = useMemo(() => {
+    const months = new Set(approvedLogs.map((l) => l.date.slice(0, 7)));
+    return Array.from(months).sort().reverse();
+  }, [approvedLogs]);
+
+  const approvedHours = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const log of approvedLogs) {
+      if (payrollMonth !== "all" && !log.date.startsWith(payrollMonth)) continue;
+      totals[log.userId] = (totals[log.userId] ?? 0) + log.totalHours;
+    }
+    return totals;
+  }, [approvedLogs, payrollMonth]);
+
   const payroll = useMemo(
     () =>
       users
@@ -81,9 +99,20 @@ export default function AdminPage() {
         .map((u) => {
           const hours = approvedHours[u.id] ?? 0;
           return { user: u, hours, total: hours * u.hourlyRate };
-        }),
+        })
+        .filter((p) => p.hours > 0),
     [users, approvedHours]
   );
+
+  async function handleDeletePayroll(userId: string, userName: string) {
+    const scopeLabel = payrollMonth === "all" ? "all time" : payrollMonth;
+    const confirmed = window.confirm(
+      `Delete ${userName}'s approved payroll for ${scopeLabel}? This permanently removes the underlying approved log entries and cannot be undone.`
+    );
+    if (!confirmed) return;
+    await deleteApprovedLogs(supabase, userId, payrollMonth === "all" ? undefined : payrollMonth);
+    loadAll();
+  }
 
   async function updateRate(userId: string, rate: number) {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, hourlyRate: rate } : u)));
@@ -390,6 +419,21 @@ export default function AdminPage() {
 
       {tab === "Payroll" && (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <label className="text-sm text-slate-500">Period:</label>
+            <select
+              value={payrollMonth}
+              onChange={(e) => setPayrollMonth(e.target.value)}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-900"
+            >
+              <option value="all">All time</option>
+              {payrollMonths.map((m) => (
+                <option key={m} value={m}>
+                  {MONTH_NAMES[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}
+                </option>
+              ))}
+            </select>
+          </div>
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
@@ -397,17 +441,34 @@ export default function AdminPage() {
                 <th className="px-4 py-2">Approved hours</th>
                 <th className="px-4 py-2">Wage / hr</th>
                 <th className="px-4 py-2">Total paid</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {payroll.map(({ user, hours, total }) => (
-                <tr key={user.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium text-slate-700">{user.name}</td>
-                  <td className="px-4 py-2 text-slate-600">{hours}h</td>
-                  <td className="px-4 py-2 text-slate-600">${user.hourlyRate.toFixed(2)}</td>
-                  <td className="px-4 py-2 font-semibold text-slate-900">${total.toFixed(2)}</td>
+              {payroll.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-slate-400">
+                    No approved payroll for this period.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                payroll.map(({ user, hours, total }) => (
+                  <tr key={user.id} className="border-t border-slate-100">
+                    <td className="px-4 py-2 font-medium text-slate-700">{user.name}</td>
+                    <td className="px-4 py-2 text-slate-600">{hours}h</td>
+                    <td className="px-4 py-2 text-slate-600">${user.hourlyRate.toFixed(2)}</td>
+                    <td className="px-4 py-2 font-semibold text-slate-900">${total.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-right">
+                      <button
+                        onClick={() => handleDeletePayroll(user.id, user.name)}
+                        className="text-sm font-medium text-red-600 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
           <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">

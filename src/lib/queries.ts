@@ -191,19 +191,36 @@ export async function setLogStatus(
   if (error) throw error;
 }
 
-export async function fetchApprovedHoursByUser(
-  supabase: SupabaseClient
-): Promise<Record<string, number>> {
+export type ApprovedLogRow = { userId: string; date: string; totalHours: number };
+
+export async function fetchApprovedLogs(supabase: SupabaseClient): Promise<ApprovedLogRow[]> {
   const { data, error } = await supabase
     .from("daily_logs")
-    .select("user_id, total_hours")
+    .select("user_id, date, total_hours")
     .eq("status", "approved");
   if (error) throw error;
-  const totals: Record<string, number> = {};
-  for (const row of data as { user_id: string; total_hours: number }[]) {
-    totals[row.user_id] = (totals[row.user_id] ?? 0) + row.total_hours;
+  return (data as { user_id: string; date: string; total_hours: number }[]).map((row) => ({
+    userId: row.user_id,
+    date: row.date,
+    totalHours: row.total_hours,
+  }));
+}
+
+export async function deleteApprovedLogs(
+  supabase: SupabaseClient,
+  userId: string,
+  monthPrefix?: string
+) {
+  let query = supabase.from("daily_logs").delete().eq("user_id", userId).eq("status", "approved");
+  if (monthPrefix) {
+    const [y, m] = monthPrefix.split("-").map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    query = query
+      .gte("date", `${monthPrefix}-01`)
+      .lte("date", `${monthPrefix}-${String(lastDay).padStart(2, "0")}`);
   }
-  return totals;
+  const { error } = await query;
+  if (error) throw error;
 }
 
 export type NotificationRow = {
