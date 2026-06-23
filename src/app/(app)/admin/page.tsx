@@ -560,7 +560,7 @@ export default function AdminPage() {
                     <td className="px-4 py-2 text-slate-600">{hours}h</td>
                     <td className="px-4 py-2 text-slate-600">
                       {user.payType === "salary"
-                        ? `$${user.salaryAmount.toFixed(2)} fixed`
+                        ? `$${user.salaryAmount.toFixed(2)}`
                         : `$${user.hourlyRate.toFixed(2)}/hr`}
                     </td>
                     <td className="px-4 py-2 font-semibold text-slate-900">${total.toFixed(2)}</td>
