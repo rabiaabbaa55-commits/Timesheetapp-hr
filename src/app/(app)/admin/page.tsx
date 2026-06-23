@@ -40,6 +40,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [payrollMonth, setPayrollMonth] = useState("all");
   const [deleteUserError, setDeleteUserError] = useState("");
+  const [breakdownUserId, setBreakdownUserId] = useState<string | null>(null);
 
   const [newProjectName, setNewProjectName] = useState("");
   const [newHolidayDate, setNewHolidayDate] = useState("");
@@ -108,6 +109,16 @@ export default function AdminPage() {
         .filter((p) => p.hours > 0),
     [users, approvedHours]
   );
+
+  const breakdownUser = breakdownUserId ? users.find((u) => u.id === breakdownUserId) ?? null : null;
+  const breakdownLogs = useMemo(() => {
+    if (!breakdownUserId) return [];
+    return approvedLogs
+      .filter((l) => l.userId === breakdownUserId)
+      .filter((l) => payrollMonth === "all" || l.date.startsWith(payrollMonth))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [approvedLogs, breakdownUserId, payrollMonth]);
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p.name])), [projects]);
 
   async function handleDeletePayroll(userId: string, userName: string) {
     const scopeLabel = payrollMonth === "all" ? "all time" : payrollMonth;
@@ -557,7 +568,14 @@ export default function AdminPage() {
                 payroll.map(({ user, hours, total }) => (
                   <tr key={user.id} className="border-t border-slate-100">
                     <td className="px-4 py-2 font-medium text-slate-700">{user.name}</td>
-                    <td className="px-4 py-2 text-slate-600">{hours}h</td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => setBreakdownUserId(user.id)}
+                        className="text-slate-600 underline hover:text-slate-900"
+                      >
+                        {hours}h
+                      </button>
+                    </td>
                     <td className="px-4 py-2 text-slate-600">
                       {user.payType === "salary"
                         ? `$${user.salaryAmount.toFixed(2)}`
@@ -580,6 +598,74 @@ export default function AdminPage() {
           <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
             Based on approved logs only. Set pay type and rate from the People tab.
           </p>
+        </div>
+      )}
+
+      {breakdownUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6 overflow-y-auto"
+          onClick={() => setBreakdownUserId(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-lg my-auto max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">{breakdownUser.name}</h2>
+                <p className="text-sm text-slate-500">
+                  {payrollMonth === "all"
+                    ? "All approved days"
+                    : `${MONTH_NAMES[Number(payrollMonth.slice(5, 7)) - 1]} ${payrollMonth.slice(0, 4)}`}
+                </p>
+              </div>
+              <button
+                onClick={() => setBreakdownUserId(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {breakdownLogs.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">
+                No approved days in this period.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Clock in/out</th>
+                      <th className="px-3 py-2">Hours</th>
+                      <th className="px-3 py-2">Leave</th>
+                      <th className="px-3 py-2">Project</th>
+                      <th className="px-3 py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakdownLogs.map((log) => (
+                      <tr key={log.date} className="border-t border-slate-100">
+                        <td className="px-3 py-2 font-medium text-slate-700">{log.date}</td>
+                        <td className="px-3 py-2 text-slate-500">
+                          {log.clockIn && log.clockOut ? `${log.clockIn} – ${log.clockOut}` : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{log.totalHours}</td>
+                        <td className="px-3 py-2 text-slate-500 capitalize">
+                          {log.leaveType !== "none" ? log.leaveType : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500">
+                          {log.projectId ? projectsById.get(log.projectId) ?? "—" : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500">{log.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

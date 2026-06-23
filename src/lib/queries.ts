@@ -217,18 +217,32 @@ export async function setLogStatus(
   if (error) throw error;
 }
 
-export type ApprovedLogRow = { userId: string; date: string; totalHours: number };
+export type ApprovedLogRow = {
+  userId: string;
+  date: string;
+  totalHours: number;
+  clockIn: string | null;
+  clockOut: string | null;
+  leaveType: LeaveType;
+  projectId: string | null;
+  notes: string;
+};
 
 export async function fetchApprovedLogs(supabase: SupabaseClient): Promise<ApprovedLogRow[]> {
   const { data, error } = await supabase
     .from("daily_logs")
-    .select("user_id, date, total_hours")
+    .select("user_id, date, total_hours, clock_in, clock_out, leave_type, project_id, notes")
     .eq("status", "approved");
   if (error) throw error;
-  return (data as { user_id: string; date: string; total_hours: number }[]).map((row) => ({
+  return (data as DailyLogRow[]).map((row) => ({
     userId: row.user_id,
     date: row.date,
     totalHours: row.total_hours,
+    clockIn: row.clock_in,
+    clockOut: row.clock_out,
+    leaveType: row.leave_type,
+    projectId: row.project_id,
+    notes: row.notes,
   }));
 }
 
