@@ -4,6 +4,8 @@ export type LeaveType = "none" | "sick" | "vacation" | "holiday" | "unpaid";
 
 export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
 
+export type PayType = "hourly" | "salary";
+
 export type User = {
   id: string;
   name: string;
@@ -11,6 +13,8 @@ export type User = {
   role: Role;
   status: "active" | "inactive";
   hourlyRate: number;
+  payType: PayType;
+  salaryAmount: number;
 };
 
 export type Project = {

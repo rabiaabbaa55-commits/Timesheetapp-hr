@@ -23,8 +23,22 @@ create table if not exists profiles (
   role text not null default 'employee' check (role in ('admin', 'employee', 'contractor')),
   status text not null default 'active' check (status in ('active', 'inactive')),
   hourly_rate numeric not null default 0,
+  pay_type text not null default 'hourly' check (pay_type in ('hourly', 'salary')),
+  salary_amount numeric not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table profiles add column if not exists pay_type text not null default 'hourly';
+alter table profiles add column if not exists salary_amount numeric not null default 0;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'profiles_pay_type_check'
+  ) then
+    alter table profiles add constraint profiles_pay_type_check
+      check (pay_type in ('hourly', 'salary'));
+  end if;
+end $$;
 
 -- Security-definer helper so RLS policies can check "is this caller an admin?"
 -- without recursively re-triggering RLS on profiles.

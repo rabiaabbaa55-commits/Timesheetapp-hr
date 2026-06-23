@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { DailyLog, LeaveType, LogStatus, Project, Role, User } from "./types";
+import { DailyLog, LeaveType, LogStatus, PayType, Project, Role, User } from "./types";
 
 type ProfileRow = {
   id: string;
@@ -8,6 +8,8 @@ type ProfileRow = {
   role: Role;
   status: "active" | "inactive";
   hourly_rate: number;
+  pay_type: PayType;
+  salary_amount: number;
 };
 
 type DailyLogRow = {
@@ -31,6 +33,8 @@ function toUser(row: ProfileRow): User {
     role: row.role,
     status: row.status,
     hourlyRate: row.hourly_rate,
+    payType: row.pay_type,
+    salaryAmount: row.salary_amount,
   };
 }
 
@@ -51,7 +55,7 @@ function toLog(row: DailyLogRow): DailyLog {
 export async function fetchProfiles(supabase: SupabaseClient): Promise<User[]> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, role, status, hourly_rate")
+    .select("id, full_name, email, role, status, hourly_rate, pay_type, salary_amount")
     .order("full_name");
   if (error) throw error;
   return (data as ProfileRow[]).map(toUser);
@@ -70,6 +74,23 @@ export async function updateHourlyRate(
   const { error } = await supabase
     .from("profiles")
     .update({ hourly_rate: hourlyRate })
+    .eq("id", userId);
+  if (error) throw error;
+}
+
+export async function updatePayType(supabase: SupabaseClient, userId: string, payType: PayType) {
+  const { error } = await supabase.from("profiles").update({ pay_type: payType }).eq("id", userId);
+  if (error) throw error;
+}
+
+export async function updateSalaryAmount(
+  supabase: SupabaseClient,
+  userId: string,
+  salaryAmount: number
+) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ salary_amount: salaryAmount })
     .eq("id", userId);
   if (error) throw error;
 }

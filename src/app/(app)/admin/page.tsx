@@ -18,9 +18,11 @@ import {
   removeProject,
   setLogStatus,
   updateHourlyRate,
+  updatePayType,
+  updateSalaryAmount,
   updateUserRole,
 } from "@/lib/queries";
-import { DailyLog, Project, Role, User } from "@/lib/types";
+import { DailyLog, PayType, Project, Role, User } from "@/lib/types";
 
 const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays"] as const;
 type Tab = (typeof TABS)[number];
@@ -100,7 +102,8 @@ export default function AdminPage() {
         .filter((u) => u.role !== "admin")
         .map((u) => {
           const hours = approvedHours[u.id] ?? 0;
-          return { user: u, hours, total: hours * u.hourlyRate };
+          const total = u.payType === "salary" ? u.salaryAmount : hours * u.hourlyRate;
+          return { user: u, hours, total };
         })
         .filter((p) => p.hours > 0),
     [users, approvedHours]
@@ -120,6 +123,24 @@ export default function AdminPage() {
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, hourlyRate: rate } : u)));
     try {
       await updateHourlyRate(supabase, userId, rate);
+    } catch {
+      loadAll();
+    }
+  }
+
+  async function handlePayTypeChange(userId: string, payType: PayType) {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, payType } : u)));
+    try {
+      await updatePayType(supabase, userId, payType);
+    } catch {
+      loadAll();
+    }
+  }
+
+  async function updateSalary(userId: string, salaryAmount: number) {
+    setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, salaryAmount } : u)));
+    try {
+      await updateSalaryAmount(supabase, userId, salaryAmount);
     } catch {
       loadAll();
     }
@@ -270,7 +291,7 @@ export default function AdminPage() {
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Role</th>
-                <th className="px-4 py-2">Wage / hr</th>
+                <th className="px-4 py-2">Pay</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -296,15 +317,35 @@ export default function AdminPage() {
                     {u.role === "admin" ? (
                       <span className="text-slate-400">—</span>
                     ) : (
-                      <div className="flex items-center gap-1 text-slate-700">
+                      <div className="flex items-center gap-1.5 text-slate-700">
+                        <select
+                          value={u.payType}
+                          onChange={(e) => handlePayTypeChange(u.id, e.target.value as PayType)}
+                          className="rounded-md border border-slate-300 px-1.5 py-1 text-xs text-slate-600 outline-none focus:border-slate-900"
+                        >
+                          <option value="hourly">Hourly</option>
+                          <option value="salary">Salary</option>
+                        </select>
                         <span>$</span>
-                        <input
-                          type="number"
-                          step="0.5"
-                          value={u.hourlyRate}
-                          onChange={(e) => updateRate(u.id, parseFloat(e.target.value) || 0)}
-                          className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
-                        />
+                        {u.payType === "salary" ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={u.salaryAmount}
+                            onChange={(e) => updateSalary(u.id, parseFloat(e.target.value) || 0)}
+                            title="Fixed salary amount"
+                            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                          />
+                        ) : (
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={u.hourlyRate}
+                            onChange={(e) => updateRate(u.id, parseFloat(e.target.value) || 0)}
+                            title="Hourly wage"
+                            className="w-20 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                          />
+                        )}
                       </div>
                     )}
                   </td>
@@ -500,7 +541,7 @@ export default function AdminPage() {
               <tr>
                 <th className="px-4 py-2">Employee</th>
                 <th className="px-4 py-2">Approved hours</th>
-                <th className="px-4 py-2">Wage / hr</th>
+                <th className="px-4 py-2">Pay rate</th>
                 <th className="px-4 py-2">Total paid</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -517,7 +558,11 @@ export default function AdminPage() {
                   <tr key={user.id} className="border-t border-slate-100">
                     <td className="px-4 py-2 font-medium text-slate-700">{user.name}</td>
                     <td className="px-4 py-2 text-slate-600">{hours}h</td>
-                    <td className="px-4 py-2 text-slate-600">${user.hourlyRate.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-slate-600">
+                      {user.payType === "salary"
+                        ? `$${user.salaryAmount.toFixed(2)} fixed`
+                        : `$${user.hourlyRate.toFixed(2)}/hr`}
+                    </td>
                     <td className="px-4 py-2 font-semibold text-slate-900">${total.toFixed(2)}</td>
                     <td className="px-4 py-2 text-right">
                       <button
@@ -533,7 +578,7 @@ export default function AdminPage() {
             </tbody>
           </table>
           <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
-            Based on approved logs only. Set wages from the People tab.
+            Based on approved logs only. Set pay type and rate from the People tab.
           </p>
         </div>
       )}

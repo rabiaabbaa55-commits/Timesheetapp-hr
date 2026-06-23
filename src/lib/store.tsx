@@ -46,7 +46,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role, status, hourly_rate")
+      .select("id, full_name, email, role, status, hourly_rate, pay_type, salary_amount")
       .eq("id", authData.user.id)
       .single();
 
@@ -58,6 +58,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         role: profile.role,
         status: profile.status,
         hourlyRate: profile.hourly_rate,
+        payType: profile.pay_type,
+        salaryAmount: profile.salary_amount,
       });
     } else {
       setCurrentUser(null);

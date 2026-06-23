@@ -18,12 +18,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 
-  const { email, fullName, role, hourlyRate } = await request.json();
+  const { email, fullName, role, hourlyRate, payType, salaryAmount } = await request.json();
   if (!email || !fullName || !role) {
     return NextResponse.json({ error: "email, fullName, and role are required" }, { status: 400 });
   }
   if (!["admin", "employee", "contractor"].includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+  if (payType && !["hourly", "salary"].includes(payType)) {
+    return NextResponse.json({ error: "Invalid pay type" }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -60,6 +63,8 @@ export async function POST(request: NextRequest) {
     role,
     status: "active",
     hourly_rate: hourlyRate ?? 0,
+    pay_type: payType ?? "hourly",
+    salary_amount: salaryAmount ?? 0,
   });
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 400 });
