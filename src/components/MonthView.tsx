@@ -6,7 +6,7 @@ import { MONTH_NAMES, daysInMonth, isWeekend, toDateKey } from "@/lib/date-utils
 import { createClient } from "@/lib/supabase/client";
 import { useApp } from "@/lib/store";
 import { fetchHolidays, fetchLogsForUser, fetchProjects, saveLog } from "@/lib/queries";
-import { DailyLog, Project } from "@/lib/types";
+import { DailyLog, Project, ROLE_LABELS } from "@/lib/types";
 import DayEntryModal from "./DayEntryModal";
 
 const statusBadge: Record<string, string> = {
@@ -57,7 +57,7 @@ export default function MonthView({ monthKey }: { monthKey: string }) {
     setActiveDate(null);
     if (log.status === "submitted") {
       notifyAdmins(
-        `${currentUser.name} (${currentUser.role}) submitted hours for ${log.date} — ${log.totalHours}h`
+        `${currentUser.name} (${ROLE_LABELS[currentUser.role]}) submitted hours for ${log.date} — ${log.totalHours}h`
       );
     }
   }

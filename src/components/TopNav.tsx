@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useApp } from "@/lib/store";
+import { ROLE_LABELS } from "@/lib/types";
 
 export default function TopNav() {
   const pathname = usePathname();
@@ -105,7 +106,7 @@ export default function TopNav() {
 
           <div className="text-right">
             <p className="text-sm font-medium text-slate-900">{currentUser.name}</p>
-            <p className="text-xs capitalize text-slate-500">{currentUser.role}</p>
+            <p className="text-xs text-slate-500">{ROLE_LABELS[currentUser.role]}</p>
           </div>
           <button
             onClick={handleLogout}

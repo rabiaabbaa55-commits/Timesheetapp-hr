@@ -1,4 +1,23 @@
-export type Role = "admin" | "employee" | "contractor";
+export type Role =
+  | "admin"
+  | "employee"
+  | "contractor"
+  | "volunteer"
+  | "court_community_service"
+  | "concession_stand"
+  | "cleaning_staff"
+  | "other";
+
+export const ROLE_LABELS: Record<Role, string> = {
+  admin: "Admin",
+  employee: "Employee",
+  contractor: "Contractor",
+  volunteer: "Volunteer",
+  court_community_service: "Court Community Service",
+  concession_stand: "Concession Stand",
+  cleaning_staff: "Cleaning Staff",
+  other: "Other",
+};
 
 export type LeaveType = "none" | "sick" | "vacation" | "holiday" | "unpaid";
 

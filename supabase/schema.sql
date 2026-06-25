@@ -20,7 +20,12 @@ create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
   email text not null,
-  role text not null default 'employee' check (role in ('admin', 'employee', 'contractor')),
+  role text not null default 'employee' check (
+    role in (
+      'admin', 'employee', 'contractor', 'volunteer',
+      'court_community_service', 'concession_stand', 'cleaning_staff', 'other'
+    )
+  ),
   status text not null default 'active' check (status in ('active', 'inactive')),
   hourly_rate numeric not null default 0,
   pay_type text not null default 'hourly' check (pay_type in ('hourly', 'salary')),
@@ -38,6 +43,21 @@ begin
     alter table profiles add constraint profiles_pay_type_check
       check (pay_type in ('hourly', 'salary'));
   end if;
+end $$;
+
+-- Widen the role check to include the additional non-admin role labels
+-- (volunteer, court community service, concession stand, cleaning staff,
+-- other), added after the table was first created.
+do $$
+begin
+  alter table profiles drop constraint if exists profiles_role_check;
+  alter table profiles add constraint profiles_role_check
+    check (
+      role in (
+        'admin', 'employee', 'contractor', 'volunteer',
+        'court_community_service', 'concession_stand', 'cleaning_staff', 'other'
+      )
+    );
 end $$;
 
 -- Security-definer helper so RLS policies can check "is this caller an admin?"

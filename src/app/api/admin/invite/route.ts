@@ -22,7 +22,17 @@ export async function POST(request: NextRequest) {
   if (!email || !fullName || !role) {
     return NextResponse.json({ error: "email, fullName, and role are required" }, { status: 400 });
   }
-  if (!["admin", "employee", "contractor"].includes(role)) {
+  const validRoles = [
+    "admin",
+    "employee",
+    "contractor",
+    "volunteer",
+    "court_community_service",
+    "concession_stand",
+    "cleaning_staff",
+    "other",
+  ];
+  if (!validRoles.includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
   if (payType && !["hourly", "salary"].includes(payType)) {

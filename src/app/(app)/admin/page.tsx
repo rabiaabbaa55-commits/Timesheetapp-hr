@@ -27,6 +27,17 @@ import { DailyLog, PayType, Project, Role, User } from "@/lib/types";
 const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays"] as const;
 type Tab = (typeof TABS)[number];
 
+const ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "employee", label: "Employee" },
+  { value: "contractor", label: "Contractor" },
+  { value: "volunteer", label: "Volunteer" },
+  { value: "court_community_service", label: "Court Community Service" },
+  { value: "concession_stand", label: "Concession Stand" },
+  { value: "cleaning_staff", label: "Cleaning Staff" },
+  { value: "other", label: "Other" },
+  { value: "admin", label: "Admin" },
+];
+
 export default function AdminPage() {
   const supabase = createClient();
   const { currentUser } = useApp();
@@ -317,11 +328,13 @@ export default function AdminPage() {
                       value={u.role}
                       onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
                       disabled={currentUser?.id === u.id}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm capitalize text-slate-700 outline-none focus:border-slate-900 disabled:opacity-60"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700 outline-none focus:border-slate-900 disabled:opacity-60"
                     >
-                      <option value="employee">Employee</option>
-                      <option value="contractor">Contractor</option>
-                      <option value="admin">Admin</option>
+                      {ROLE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="px-4 py-2">
@@ -447,9 +460,11 @@ export default function AdminPage() {
                   onChange={(e) => setInviteRole(e.target.value as Role)}
                   className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
                 >
-                  <option value="employee">Employee</option>
-                  <option value="contractor">Contractor</option>
-                  <option value="admin">Admin</option>
+                  {ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
                 </select>
                 <div className="flex items-center gap-1">
                   <span className="text-sm text-slate-500">$/hr</span>
