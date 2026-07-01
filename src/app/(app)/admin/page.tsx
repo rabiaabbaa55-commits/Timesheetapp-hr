@@ -357,6 +357,12 @@ export default function AdminPage() {
                 {users.length}
               </span>
             )}
+            {t === "Approvals" && pendingLogs.length > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-xs font-semibold text-emerald-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {pendingLogs.length}
+              </span>
+            )}
             {t === "Bin" && deletedUsers.length > 0 && (
               <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-600">
                 {deletedUsers.length}
