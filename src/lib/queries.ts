@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { DailyLog, LeaveType, LogStatus, PayType, Project, Role, User } from "./types";
+import { DailyLog, DeletedUser, LeaveType, LogStatus, PayType, Project, Role, User } from "./types";
 
 type ProfileRow = {
   id: string;
@@ -56,9 +56,25 @@ export async function fetchProfiles(supabase: SupabaseClient): Promise<User[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, email, role, status, hourly_rate, pay_type, salary_amount")
+    .is("deleted_at", null)
     .order("full_name");
   if (error) throw error;
   return (data as ProfileRow[]).map(toUser);
+}
+
+export async function fetchDeletedProfiles(supabase: SupabaseClient): Promise<DeletedUser[]> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, role, status, hourly_rate, pay_type, salary_amount, deleted_at")
+    .not("deleted_at", "is", null)
+    .gte("deleted_at", thirtyDaysAgo)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data as (ProfileRow & { deleted_at: string })[]).map((row) => ({
+    ...toUser(row),
+    deletedAt: row.deleted_at,
+  }));
 }
 
 export async function updateUserRole(supabase: SupabaseClient, userId: string, role: Role) {

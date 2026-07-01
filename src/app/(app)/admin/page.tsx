@@ -10,6 +10,7 @@ import {
   ApprovedLogRow,
   deleteApprovedLogs,
   fetchApprovedLogs,
+  fetchDeletedProfiles,
   fetchHolidays,
   fetchPendingLogs,
   fetchProfiles,
@@ -22,9 +23,9 @@ import {
   updateSalaryAmount,
   updateUserRole,
 } from "@/lib/queries";
-import { DailyLog, PayType, Project, Role, User } from "@/lib/types";
+import { DailyLog, DeletedUser, PayType, Project, Role, User } from "@/lib/types";
 
-const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays"] as const;
+const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays", "Bin"] as const;
 type Tab = (typeof TABS)[number];
 
 const ROLE_OPTIONS: { value: Role; label: string }[] = [
@@ -48,6 +49,7 @@ export default function AdminPage() {
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [pendingLogs, setPendingLogs] = useState<{ log: DailyLog; employeeName: string }[]>([]);
   const [approvedLogs, setApprovedLogs] = useState<ApprovedLogRow[]>([]);
+  const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [payrollMonth, setPayrollMonth] = useState("all");
   const [deleteUserError, setDeleteUserError] = useState("");
@@ -71,18 +73,20 @@ export default function AdminPage() {
     async (showSpinner = true) => {
       if (showSpinner) setLoading(true);
       try {
-        const [u, p, h, pending, logs] = await Promise.all([
+        const [u, p, h, pending, logs, deleted] = await Promise.all([
           fetchProfiles(supabase),
           fetchProjects(supabase),
           fetchHolidays(supabase),
           fetchPendingLogs(supabase),
           fetchApprovedLogs(supabase),
+          fetchDeletedProfiles(supabase),
         ]);
         setUsers(u);
         setProjects(p);
         setHolidays(h);
         setPendingLogs(pending);
         setApprovedLogs(logs);
+        setDeletedUsers(deleted);
       } finally {
         if (showSpinner) setLoading(false);
       }
@@ -213,6 +217,22 @@ export default function AdminPage() {
     }
   }
 
+  async function handleRestoreUser(userId: string, userName: string) {
+    const confirmed = window.confirm(`Restore ${userName}'s account? They will be able to log in again.`);
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: "PUT" });
+      const body = await res.json();
+      if (!res.ok) {
+        window.alert(body.error ?? "Could not restore this account.");
+        return;
+      }
+      loadAll();
+    } catch {
+      window.alert("Something went wrong talking to the server. Please try again.");
+    }
+  }
+
   async function handleAddProject() {
     const name = newProjectName.trim();
     if (!name) return;
@@ -307,13 +327,23 @@ export default function AdminPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium ${
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium ${
               tab === t
                 ? "border-b-2 border-slate-900 text-slate-900"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
             {t}
+            {t === "People" && (
+              <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-xs font-semibold text-slate-700">
+                {users.length}
+              </span>
+            )}
+            {t === "Bin" && deletedUsers.length > 0 && (
+              <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-600">
+                {deletedUsers.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -750,6 +780,62 @@ export default function AdminPage() {
               + Add project
             </button>
           </div>
+        </div>
+      )}
+
+      {tab === "Bin" && (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-sm text-slate-500">
+              Deleted people are kept here for 30 days. Restore them before then or they are
+              permanently gone.
+            </p>
+          </div>
+          {deletedUsers.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-slate-400">The bin is empty.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-2">Name</th>
+                  <th className="px-4 py-2">Email</th>
+                  <th className="px-4 py-2">Role</th>
+                  <th className="px-4 py-2">Deleted</th>
+                  <th className="px-4 py-2">Days left</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {deletedUsers.map((u) => {
+                  const deletedMs = new Date(u.deletedAt).getTime();
+                  const daysLeft = Math.ceil((deletedMs + 30 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000));
+                  return (
+                    <tr key={u.id} className="border-t border-slate-100">
+                      <td className="px-4 py-2 font-medium text-slate-700">{u.name}</td>
+                      <td className="px-4 py-2 text-slate-500">{u.email}</td>
+                      <td className="px-4 py-2 text-slate-500 capitalize">{u.role}</td>
+                      <td className="px-4 py-2 text-slate-500">
+                        {new Date(u.deletedAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`text-sm font-medium ${daysLeft <= 3 ? "text-red-600" : "text-slate-600"}`}>
+                          {daysLeft}d
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          onClick={() => handleRestoreUser(u.id, u.name)}
+                          className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                        >
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

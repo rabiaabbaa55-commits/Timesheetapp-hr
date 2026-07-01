@@ -19,6 +19,8 @@ async function requireAdmin() {
   return { callerId: authData.user.id };
 }
 
+// Soft-delete: ban the auth user (prevents login) and stamp deleted_at on the profile.
+// The record stays in the DB for 30 days so it can be restored from the Bin tab.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,11 +34,52 @@ export async function DELETE(
   }
 
   const admin = createAdminClient();
-  // Deletes the auth.users row, which cascades to profiles (and from there
-  // to daily_logs etc.) via the on-delete-cascade foreign keys in schema.sql.
-  const { error } = await admin.auth.admin.deleteUser(id);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Ban the auth user so they cannot log in while in the bin.
+  const { error: banError } = await admin.auth.admin.updateUserById(id, {
+    ban_duration: "876000h", // ~100 years
+  });
+  if (banError) {
+    return NextResponse.json({ error: banError.message }, { status: 400 });
   }
+
+  // Stamp deleted_at on the profile (keeps the row for Bin/restore).
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ deleted_at: new Date().toISOString(), status: "inactive" })
+    .eq("id", id);
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
+// Restore from bin: unban the auth user and clear deleted_at.
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+
+  const { id } = await params;
+  const admin = createAdminClient();
+
+  const { error: unbanError } = await admin.auth.admin.updateUserById(id, {
+    ban_duration: "none",
+  });
+  if (unbanError) {
+    return NextResponse.json({ error: unbanError.message }, { status: 400 });
+  }
+
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ deleted_at: null, status: "active" })
+    .eq("id", id);
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 400 });
+  }
+
   return NextResponse.json({ success: true });
 }

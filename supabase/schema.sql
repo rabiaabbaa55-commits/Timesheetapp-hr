@@ -30,11 +30,13 @@ create table if not exists profiles (
   hourly_rate numeric not null default 0,
   pay_type text not null default 'hourly' check (pay_type in ('hourly', 'salary', 'daily')),
   salary_amount numeric not null default 0,
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 alter table profiles add column if not exists pay_type text not null default 'hourly';
 alter table profiles add column if not exists salary_amount numeric not null default 0;
+alter table profiles add column if not exists deleted_at timestamptz;
 do $$
 begin
   if not exists (

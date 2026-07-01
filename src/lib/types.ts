@@ -36,6 +36,8 @@ export type User = {
   salaryAmount: number;
 };
 
+export type DeletedUser = User & { deletedAt: string };
+
 export type Project = {
   id: string;
   name: string;
