@@ -23,7 +23,7 @@ export type LeaveType = "none" | "sick" | "vacation" | "holiday" | "unpaid";
 
 export type LogStatus = "draft" | "submitted" | "approved" | "rejected";
 
-export type PayType = "hourly" | "salary";
+export type PayType = "hourly" | "salary" | "daily";
 
 export type User = {
   id: string;

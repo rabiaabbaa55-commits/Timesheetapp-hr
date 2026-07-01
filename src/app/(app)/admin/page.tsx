@@ -108,17 +108,30 @@ export default function AdminPage() {
     return totals;
   }, [approvedLogs, payrollMonth]);
 
+  const approvedDays = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const log of approvedLogs) {
+      if (payrollMonth !== "all" && !log.date.startsWith(payrollMonth)) continue;
+      counts[log.userId] = (counts[log.userId] ?? 0) + 1;
+    }
+    return counts;
+  }, [approvedLogs, payrollMonth]);
+
   const payroll = useMemo(
     () =>
       users
         .filter((u) => u.role !== "admin")
         .map((u) => {
           const hours = approvedHours[u.id] ?? 0;
-          const total = u.payType === "salary" ? u.salaryAmount : hours * u.hourlyRate;
-          return { user: u, hours, total };
+          const days = approvedDays[u.id] ?? 0;
+          let total: number;
+          if (u.payType === "salary") total = u.salaryAmount;
+          else if (u.payType === "daily") total = days * u.salaryAmount;
+          else total = hours * u.hourlyRate;
+          return { user: u, hours, days, total };
         })
         .filter((p) => p.hours > 0),
-    [users, approvedHours]
+    [users, approvedHours, approvedDays]
   );
 
   const breakdownUser = breakdownUserId ? users.find((u) => u.id === breakdownUserId) ?? null : null;
@@ -349,6 +362,7 @@ export default function AdminPage() {
                         >
                           <option value="hourly">Hourly</option>
                           <option value="salary">Salary</option>
+                          <option value="daily">Daily</option>
                         </select>
                         <span>$</span>
                         {u.payType === "salary" ? (
@@ -358,6 +372,15 @@ export default function AdminPage() {
                             value={u.salaryAmount}
                             onChange={(e) => updateSalary(u.id, parseFloat(e.target.value) || 0)}
                             title="Fixed salary amount"
+                            className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                          />
+                        ) : u.payType === "daily" ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={u.salaryAmount}
+                            onChange={(e) => updateSalary(u.id, parseFloat(e.target.value) || 0)}
+                            title="Daily wage"
                             className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
                           />
                         ) : (
@@ -594,7 +617,9 @@ export default function AdminPage() {
                     <td className="px-4 py-2 text-slate-600">
                       {user.payType === "salary"
                         ? `$${user.salaryAmount.toFixed(2)}`
-                        : `$${user.hourlyRate.toFixed(2)}/hr`}
+                        : user.payType === "daily"
+                          ? `$${user.salaryAmount.toFixed(2)}/day`
+                          : `$${user.hourlyRate.toFixed(2)}/hr`}
                     </td>
                     <td className="px-4 py-2 font-semibold text-slate-900">${total.toFixed(2)}</td>
                     <td className="px-4 py-2 text-right">

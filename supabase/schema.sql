@@ -28,7 +28,7 @@ create table if not exists profiles (
   ),
   status text not null default 'active' check (status in ('active', 'inactive')),
   hourly_rate numeric not null default 0,
-  pay_type text not null default 'hourly' check (pay_type in ('hourly', 'salary')),
+  pay_type text not null default 'hourly' check (pay_type in ('hourly', 'salary', 'daily')),
   salary_amount numeric not null default 0,
   created_at timestamptz not null default now()
 );
@@ -41,8 +41,16 @@ begin
     select 1 from pg_constraint where conname = 'profiles_pay_type_check'
   ) then
     alter table profiles add constraint profiles_pay_type_check
-      check (pay_type in ('hourly', 'salary'));
+      check (pay_type in ('hourly', 'salary', 'daily'));
   end if;
+end $$;
+
+-- Widen pay_type check to include 'daily' (added for daily-wage workers)
+do $$
+begin
+  alter table profiles drop constraint if exists profiles_pay_type_check;
+  alter table profiles add constraint profiles_pay_type_check
+    check (pay_type in ('hourly', 'salary', 'daily'));
 end $$;
 
 -- Widen the role check to include the additional non-admin role labels

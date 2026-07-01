@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!validRoles.includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
-  if (payType && !["hourly", "salary"].includes(payType)) {
+  if (payType && !["hourly", "salary", "daily"].includes(payType)) {
     return NextResponse.json({ error: "Invalid pay type" }, { status: 400 });
   }
 
