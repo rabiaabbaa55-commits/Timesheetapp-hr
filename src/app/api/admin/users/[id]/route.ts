@@ -19,8 +19,8 @@ async function requireAdmin() {
   return { callerId: authData.user.id };
 }
 
-// Soft-delete: ban the auth user (prevents login) and stamp deleted_at on the profile.
-// The record stays in the DB for 30 days so it can be restored from the Bin tab.
+// DELETE with ?permanent=true → hard delete from auth (cascades to profiles + daily_logs).
+// DELETE without that param → soft-delete: ban + stamp deleted_at so Bin can restore within 30 days.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,8 +34,15 @@ export async function DELETE(
   }
 
   const admin = createAdminClient();
+  const permanent = new URL(request.url).searchParams.get("permanent") === "true";
 
-  // Ban the auth user so they cannot log in while in the bin.
+  if (permanent) {
+    const { error } = await admin.auth.admin.deleteUser(id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ success: true });
+  }
+
+  // Soft-delete: ban the auth user so they cannot log in while in the bin.
   const { error: banError } = await admin.auth.admin.updateUserById(id, {
     ban_duration: "876000h", // ~100 years
   });

@@ -217,6 +217,24 @@ export default function AdminPage() {
     }
   }
 
+  async function handlePermanentDelete(userId: string, userName: string) {
+    const confirmed = window.confirm(
+      `Permanently delete ${userName}? This removes their account and ALL their logged hours forever. This cannot be undone.`
+    );
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/admin/users/${userId}?permanent=true`, { method: "DELETE" });
+      const body = await res.json();
+      if (!res.ok) {
+        window.alert(body.error ?? "Could not permanently delete this account.");
+        return;
+      }
+      loadAll();
+    } catch {
+      window.alert("Something went wrong talking to the server. Please try again.");
+    }
+  }
+
   async function handleRestoreUser(userId: string, userName: string) {
     const confirmed = window.confirm(`Restore ${userName}'s account? They will be able to log in again.`);
     if (!confirmed) return;
@@ -823,12 +841,20 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="px-4 py-2 text-right">
-                        <button
-                          onClick={() => handleRestoreUser(u.id, u.name)}
-                          className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-                        >
-                          Restore
-                        </button>
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => handleRestoreUser(u.id, u.name)}
+                            className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                          >
+                            Restore
+                          </button>
+                          <button
+                            onClick={() => handlePermanentDelete(u.id, u.name)}
+                            className="text-sm font-medium text-red-600 hover:text-red-700"
+                          >
+                            Delete forever
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
