@@ -50,6 +50,7 @@ export default function AdminPage() {
   const [pendingLogs, setPendingLogs] = useState<{ log: DailyLog; employeeName: string }[]>([]);
   const [approvedLogs, setApprovedLogs] = useState<ApprovedLogRow[]>([]);
   const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
+  const [authMeta, setAuthMeta] = useState<Record<string, { lastSignInAt: string | null; createdAt: string }>>({});
   const [loading, setLoading] = useState(true);
   const [payrollMonth, setPayrollMonth] = useState("all");
   const [deleteUserError, setDeleteUserError] = useState("");
@@ -73,13 +74,14 @@ export default function AdminPage() {
     async (showSpinner = true) => {
       if (showSpinner) setLoading(true);
       try {
-        const [u, p, h, pending, logs, deleted] = await Promise.all([
+        const [u, p, h, pending, logs, deleted, authRes] = await Promise.all([
           fetchProfiles(supabase),
           fetchProjects(supabase),
           fetchHolidays(supabase),
           fetchPendingLogs(supabase),
           fetchApprovedLogs(supabase),
           fetchDeletedProfiles(supabase),
+          fetch("/api/admin/users").then((r) => r.json()),
         ]);
         setUsers(u);
         setProjects(p);
@@ -87,6 +89,11 @@ export default function AdminPage() {
         setPendingLogs(pending);
         setApprovedLogs(logs);
         setDeletedUsers(deleted);
+        if (Array.isArray(authRes)) {
+          const meta: Record<string, { lastSignInAt: string | null; createdAt: string }> = {};
+          for (const row of authRes) meta[row.id] = { lastSignInAt: row.lastSignInAt, createdAt: row.createdAt };
+          setAuthMeta(meta);
+        }
       } finally {
         if (showSpinner) setLoading(false);
       }
@@ -381,6 +388,7 @@ export default function AdminPage() {
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Role</th>
                 <th className="px-4 py-2">Pay</th>
+                <th className="px-4 py-2">Last login</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -449,6 +457,14 @@ export default function AdminPage() {
                         )}
                       </div>
                     )}
+                  </td>
+                  <td className="px-4 py-2 text-slate-500 text-xs">
+                    {authMeta[u.id]?.lastSignInAt
+                      ? new Date(authMeta[u.id].lastSignInAt!).toLocaleString(undefined, {
+                          month: "short", day: "numeric", year: "numeric",
+                          hour: "2-digit", minute: "2-digit",
+                        })
+                      : <span className="text-slate-400">Never</span>}
                   </td>
                   <td className="px-4 py-2">
                     <span
