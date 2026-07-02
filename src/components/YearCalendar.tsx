@@ -91,6 +91,20 @@ function MiniMonth({
   );
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  submitted: "Pending approval",
+  approved: "Approved",
+  rejected: "Rejected",
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  draft: "bg-slate-100 text-slate-600",
+  submitted: "bg-blue-100 text-blue-700",
+  approved: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-red-100 text-red-700",
+};
+
 export default function YearCalendar({ initialYear }: { initialYear: number }) {
   const supabase = createClient();
   const { currentUser } = useApp();
@@ -139,16 +153,85 @@ export default function YearCalendar({ initialYear }: { initialYear: number }) {
       {loading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 12 }, (_, m) => (
-            <MiniMonth
-              key={m}
-              year={year}
-              month={m}
-              logsByDate={logsByDate}
-              holidaysByDate={holidaysByDate}
-            />
-          ))}
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 12 }, (_, m) => (
+              <MiniMonth
+                key={m}
+                year={year}
+                month={m}
+                logsByDate={logsByDate}
+                holidaysByDate={holidaysByDate}
+              />
+            ))}
+          </div>
+
+          <HoursSummary year={year} logsByDate={logsByDate} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function HoursSummary({ year, logsByDate }: { year: number; logsByDate: Map<string, DailyLog> }) {
+  const allLogs = Array.from(logsByDate.values())
+    .filter((l) => l.date.startsWith(String(year)))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const approvedHours = allLogs.filter((l) => l.status === "approved").reduce((s, l) => s + l.totalHours, 0);
+  const pendingCount = allLogs.filter((l) => l.status === "submitted").length;
+  const rejectedCount = allLogs.filter((l) => l.status === "rejected").length;
+
+  const recent = allLogs.filter((l) => l.status !== "draft").slice(0, 10);
+
+  return (
+    <div className="mt-8">
+      {/* Stat cards */}
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <p className="text-xs text-slate-500">Approved hours</p>
+          <p className="mt-1 text-2xl font-semibold text-emerald-700">{approvedHours}h</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <p className="text-xs text-slate-500">Pending approval</p>
+          <p className="mt-1 text-2xl font-semibold text-blue-700">{pendingCount}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <p className="text-xs text-slate-500">Rejected</p>
+          <p className="mt-1 text-2xl font-semibold text-red-600">{rejectedCount}</p>
+        </div>
+      </div>
+
+      {/* Recent submissions list */}
+      {recent.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-4 py-2">
+            <p className="text-sm font-medium text-slate-700">Recent submissions</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-2">Date</th>
+                <th className="px-4 py-2">Hours</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recent.map((log) => (
+                <tr key={log.date} className="border-t border-slate-100">
+                  <td className="px-4 py-2 font-medium text-slate-700">{log.date}</td>
+                  <td className="px-4 py-2 text-slate-600">{log.totalHours}h</td>
+                  <td className="px-4 py-2">
+                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[log.status]}`}>
+                      {STATUS_LABEL[log.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-slate-500">{log.notes || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
