@@ -12,9 +12,11 @@ import {
   fetchApprovedLogs,
   fetchDeletedProfiles,
   fetchHolidays,
+  fetchLogsForPeriod,
   fetchPendingLogs,
   fetchProfiles,
   fetchProjects,
+  ReportLogRow,
   removeHoliday,
   removeProject,
   setLogStatus,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/queries";
 import { DailyLog, DeletedUser, PayType, Project, Role, User } from "@/lib/types";
 
-const TABS = ["People", "Approvals", "Payroll", "Projects", "Holidays", "Bin"] as const;
+const TABS = ["People", "Approvals", "Payroll", "Reports", "Projects", "Holidays", "Bin"] as const;
 type Tab = (typeof TABS)[number];
 
 const ROLE_OPTIONS: { value: Role; label: string }[] = [
@@ -52,6 +54,20 @@ export default function AdminPage() {
   const [deletedUsers, setDeletedUsers] = useState<DeletedUser[]>([]);
   const [authMeta, setAuthMeta] = useState<Record<string, { lastSignInAt: string | null; createdAt: string }>>({});
   const [loading, setLoading] = useState(true);
+
+  // Reports tab state
+  const [reportType, setReportType] = useState<"weekly" | "monthly">("monthly");
+  const [reportMonthInput, setReportMonthInput] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [reportWeekInput, setReportWeekInput] = useState(() => {
+    const now = new Date();
+    return now.toISOString().slice(0, 10);
+  });
+  const [reportLogs, setReportLogs] = useState<ReportLogRow[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportGenerated, setReportGenerated] = useState(false);
   const [payrollMonth, setPayrollMonth] = useState("all");
   const [deleteUserError, setDeleteUserError] = useState("");
   const [breakdownUserId, setBreakdownUserId] = useState<string | null>(null);
@@ -256,6 +272,103 @@ export default function AdminPage() {
     } catch {
       window.alert("Something went wrong talking to the server. Please try again.");
     }
+  }
+
+  function getReportDateRange(): { start: string; end: string; label: string } {
+    if (reportType === "monthly") {
+      const [y, m] = reportMonthInput.split("-").map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      return {
+        start: `${reportMonthInput}-01`,
+        end: `${reportMonthInput}-${String(lastDay).padStart(2, "0")}`,
+        label: `${MONTH_NAMES[m - 1]} ${y}`,
+      };
+    } else {
+      const d = new Date(reportWeekInput);
+      const day = d.getDay();
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - ((day + 6) % 7));
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      const fmt = (dt: Date) => dt.toISOString().slice(0, 10);
+      return {
+        start: fmt(monday),
+        end: fmt(sunday),
+        label: `Week of ${fmt(monday)} – ${fmt(sunday)}`,
+      };
+    }
+  }
+
+  async function handleGenerateReport() {
+    setReportLoading(true);
+    setReportGenerated(false);
+    try {
+      const { start, end } = getReportDateRange();
+      const logs = await fetchLogsForPeriod(supabase, start, end);
+      setReportLogs(logs);
+      setReportGenerated(true);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  function handleDownloadCSV() {
+    const { start, end, label } = getReportDateRange();
+
+    // Build per-person summary
+    const summaryMap: Record<string, { name: string; role: string; days: number; totalHours: number; approvedHours: number; submittedHours: number; rejectedHours: number }> = {};
+    for (const log of reportLogs) {
+      if (!summaryMap[log.userId]) {
+        summaryMap[log.userId] = { name: log.userName, role: log.userRole, days: 0, totalHours: 0, approvedHours: 0, submittedHours: 0, rejectedHours: 0 };
+      }
+      const s = summaryMap[log.userId];
+      s.days += 1;
+      s.totalHours += log.totalHours;
+      if (log.status === "approved") s.approvedHours += log.totalHours;
+      if (log.status === "submitted") s.submittedHours += log.totalHours;
+      if (log.status === "rejected") s.rejectedHours += log.totalHours;
+    }
+
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+
+    const rows: string[] = [];
+    rows.push(`"Report: ${label}"`);
+    rows.push(`"Period: ${start} to ${end}"`);
+    rows.push("");
+
+    // Summary section
+    rows.push("SUMMARY");
+    rows.push(["Name", "Role", "Days Logged", "Total Hours", "Approved Hours", "Pending Hours", "Rejected Hours"].map(esc).join(","));
+    for (const s of Object.values(summaryMap)) {
+      rows.push([s.name, s.role, s.days, s.totalHours, s.approvedHours, s.submittedHours, s.rejectedHours].map(esc).join(","));
+    }
+
+    rows.push("");
+
+    // Detail section
+    rows.push("DETAILED LOG");
+    rows.push(["Name", "Role", "Date", "Clock In", "Clock Out", "Hours", "Leave", "Status", "Notes"].map(esc).join(","));
+    for (const log of reportLogs) {
+      rows.push([
+        log.userName,
+        log.userRole,
+        log.date,
+        log.clockIn ?? "",
+        log.clockOut ?? "",
+        log.totalHours,
+        log.leaveType !== "none" ? log.leaveType : "",
+        log.status,
+        log.notes,
+      ].map(esc).join(","));
+    }
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `timesheet-report-${start}-to-${end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleAddProject() {
@@ -776,6 +889,178 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {tab === "Reports" && (
+        <div className="space-y-6">
+          {/* Controls */}
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-500">Report type</label>
+                <div className="flex rounded-md border border-slate-300 overflow-hidden">
+                  <button
+                    onClick={() => { setReportType("monthly"); setReportGenerated(false); }}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${reportType === "monthly" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    onClick={() => { setReportType("weekly"); setReportGenerated(false); }}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${reportType === "weekly" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    Weekly
+                  </button>
+                </div>
+              </div>
+
+              {reportType === "monthly" ? (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Month</label>
+                  <input
+                    type="month"
+                    value={reportMonthInput}
+                    onChange={(e) => { setReportMonthInput(e.target.value); setReportGenerated(false); }}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-500">Any day in the week</label>
+                  <input
+                    type="date"
+                    value={reportWeekInput}
+                    onChange={(e) => { setReportWeekInput(e.target.value); setReportGenerated(false); }}
+                    className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+                  />
+                </div>
+              )}
+
+              <button
+                onClick={handleGenerateReport}
+                disabled={reportLoading}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {reportLoading ? "Loading…" : "Generate report"}
+              </button>
+
+              {reportGenerated && reportLogs.length > 0 && (
+                <button
+                  onClick={handleDownloadCSV}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  ↓ Download CSV
+                </button>
+              )}
+            </div>
+
+            {reportGenerated && (
+              <p className="mt-3 text-xs text-slate-500">
+                {getReportDateRange().label} · {reportLogs.length} log entries · {[...new Set(reportLogs.map((l) => l.userId))].length} people
+              </p>
+            )}
+          </div>
+
+          {/* Summary table */}
+          {reportGenerated && (() => {
+            const summaryMap: Record<string, { name: string; role: string; days: number; totalHours: number; approvedHours: number; submittedHours: number; rejectedHours: number }> = {};
+            for (const log of reportLogs) {
+              if (!summaryMap[log.userId]) summaryMap[log.userId] = { name: log.userName, role: log.userRole, days: 0, totalHours: 0, approvedHours: 0, submittedHours: 0, rejectedHours: 0 };
+              const s = summaryMap[log.userId];
+              s.days++;
+              s.totalHours += log.totalHours;
+              if (log.status === "approved") s.approvedHours += log.totalHours;
+              if (log.status === "submitted") s.submittedHours += log.totalHours;
+              if (log.status === "rejected") s.rejectedHours += log.totalHours;
+            }
+            const summaries = Object.values(summaryMap);
+            return summaries.length === 0 ? (
+              <p className="rounded-lg border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-400">
+                No logs found for this period.
+              </p>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">Summary</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2">Name</th>
+                        <th className="px-4 py-2">Role</th>
+                        <th className="px-4 py-2">Days logged</th>
+                        <th className="px-4 py-2">Total hours</th>
+                        <th className="px-4 py-2">Approved</th>
+                        <th className="px-4 py-2">Pending</th>
+                        <th className="px-4 py-2">Rejected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaries.map((s) => (
+                        <tr key={s.name} className="border-t border-slate-100">
+                          <td className="px-4 py-2 font-medium text-slate-700">{s.name}</td>
+                          <td className="px-4 py-2 text-slate-500 capitalize">{s.role.replace(/_/g, " ")}</td>
+                          <td className="px-4 py-2 text-slate-700">{s.days}</td>
+                          <td className="px-4 py-2 font-semibold text-slate-900">{s.totalHours}h</td>
+                          <td className="px-4 py-2 text-emerald-700">{s.approvedHours}h</td>
+                          <td className="px-4 py-2 text-blue-700">{s.submittedHours}h</td>
+                          <td className="px-4 py-2 text-red-600">{s.rejectedHours}h</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Detailed log table */}
+          {reportGenerated && reportLogs.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-4 py-2 text-sm font-medium text-slate-700">Detailed log</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Date</th>
+                      <th className="px-4 py-2">Clock in/out</th>
+                      <th className="px-4 py-2">Hours</th>
+                      <th className="px-4 py-2">Leave</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportLogs.map((log, i) => (
+                      <tr key={i} className="border-t border-slate-100">
+                        <td className="px-4 py-2 font-medium text-slate-700">{log.userName}</td>
+                        <td className="px-4 py-2 text-slate-600">{log.date}</td>
+                        <td className="px-4 py-2 text-slate-500">
+                          {log.clockIn && log.clockOut ? `${log.clockIn} – ${log.clockOut}` : "—"}
+                        </td>
+                        <td className="px-4 py-2 text-slate-700">{log.totalHours}h</td>
+                        <td className="px-4 py-2 text-slate-500 capitalize">
+                          {log.leaveType !== "none" ? log.leaveType : "—"}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${
+                            log.status === "approved" ? "bg-emerald-100 text-emerald-700" :
+                            log.status === "submitted" ? "bg-blue-100 text-blue-700" :
+                            log.status === "rejected" ? "bg-red-100 text-red-700" :
+                            "bg-slate-100 text-slate-600"
+                          }`}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-slate-500">{log.notes || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

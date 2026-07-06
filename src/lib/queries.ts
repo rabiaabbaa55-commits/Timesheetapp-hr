@@ -279,6 +279,47 @@ export async function deleteApprovedLogs(
   if (error) throw error;
 }
 
+export type ReportLogRow = {
+  userId: string;
+  userName: string;
+  userRole: string;
+  date: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  totalHours: number;
+  leaveType: LeaveType;
+  projectId: string | null;
+  notes: string;
+  status: LogStatus;
+};
+
+export async function fetchLogsForPeriod(
+  supabase: SupabaseClient,
+  startDate: string,
+  endDate: string
+): Promise<ReportLogRow[]> {
+  const { data, error } = await supabase
+    .from("daily_logs")
+    .select("user_id, date, clock_in, clock_out, total_hours, leave_type, project_id, notes, status, profiles!daily_logs_user_id_fkey(full_name, role)")
+    .gte("date", startDate)
+    .lte("date", endDate)
+    .order("date");
+  if (error) throw error;
+  return (data as (DailyLogRow & { profiles: { full_name: string; role: string } | null })[]).map((row) => ({
+    userId: row.user_id,
+    userName: row.profiles?.full_name ?? "Unknown",
+    userRole: row.profiles?.role ?? "",
+    date: row.date,
+    clockIn: row.clock_in,
+    clockOut: row.clock_out,
+    totalHours: row.total_hours,
+    leaveType: row.leave_type,
+    projectId: row.project_id,
+    notes: row.notes,
+    status: row.status,
+  }));
+}
+
 export type NotificationRow = {
   id: string;
   message: string;
