@@ -460,7 +460,7 @@ export default function AdminPage() {
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-slate-900">Admin</h1>
 
-      <div className="mb-6 flex gap-1 border-b border-slate-200">
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
         {TABS.map((t) => (
           <button
             key={t}
