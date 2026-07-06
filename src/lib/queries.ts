@@ -305,7 +305,7 @@ export async function fetchLogsForPeriod(
     .lte("date", endDate)
     .order("date");
   if (error) throw error;
-  return (data as (DailyLogRow & { profiles: { full_name: string; role: string } | null })[]).map((row) => ({
+  return (data as unknown as (DailyLogRow & { profiles: { full_name: string; role: string } | null })[]).map((row) => ({
     userId: row.user_id,
     userName: row.profiles?.full_name ?? "Unknown",
     userRole: row.profiles?.role ?? "",
