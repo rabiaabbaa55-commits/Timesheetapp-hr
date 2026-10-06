@@ -38,6 +38,7 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
   { value: "concession_stand", label: "Concession Stand" },
   { value: "cleaning_staff", label: "Cleaning Staff" },
   { value: "other", label: "Other" },
+  { value: "intern", label: "Intern" },
   { value: "admin", label: "Admin" },
 ];
 

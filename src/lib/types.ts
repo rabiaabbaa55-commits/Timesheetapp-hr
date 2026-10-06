@@ -6,7 +6,8 @@ export type Role =
   | "court_community_service"
   | "concession_stand"
   | "cleaning_staff"
-  | "other";
+  | "other"
+  | "intern";
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: "Admin",
@@ -17,6 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   concession_stand: "Concession Stand",
   cleaning_staff: "Cleaning Staff",
   other: "Other",
+  intern: "Intern",
 };
 
 export type LeaveType = "none" | "sick" | "vacation" | "holiday" | "unpaid";

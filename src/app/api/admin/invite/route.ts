@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     "concession_stand",
     "cleaning_staff",
     "other",
+    "intern",
   ];
   if (!validRoles.includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });

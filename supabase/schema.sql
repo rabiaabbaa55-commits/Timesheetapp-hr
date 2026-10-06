@@ -23,7 +23,7 @@ create table if not exists profiles (
   role text not null default 'employee' check (
     role in (
       'admin', 'employee', 'contractor', 'volunteer',
-      'court_community_service', 'concession_stand', 'cleaning_staff', 'other'
+      'court_community_service', 'concession_stand', 'cleaning_staff', 'other', 'intern'
     )
   ),
   status text not null default 'active' check (status in ('active', 'inactive')),
@@ -65,7 +65,7 @@ begin
     check (
       role in (
         'admin', 'employee', 'contractor', 'volunteer',
-        'court_community_service', 'concession_stand', 'cleaning_staff', 'other'
+        'court_community_service', 'concession_stand', 'cleaning_staff', 'other', 'intern'
       )
     );
 end $$;
