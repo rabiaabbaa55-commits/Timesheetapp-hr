@@ -56,6 +56,15 @@ export default function AdminPage() {
   const [authMeta, setAuthMeta] = useState<Record<string, { lastSignInAt: string | null; createdAt: string }>>({});
   const [loading, setLoading] = useState(true);
 
+  // People tab role filter (empty = show all)
+  const [roleFilter, setRoleFilter] = useState<Role[]>([]);
+
+  function toggleRoleFilter(role: Role) {
+    setRoleFilter((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    );
+  }
+
   // Reports tab state
   const [reportType, setReportType] = useState<"weekly" | "monthly">("monthly");
   const [reportMonthInput, setReportMonthInput] = useState(() => {
@@ -495,6 +504,31 @@ export default function AdminPage() {
 
       {tab === "People" && (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          {/* Role filter */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
+            <span className="text-xs font-medium text-slate-500">Filter by role:</span>
+            {ROLE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => toggleRoleFilter(opt.value)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  roleFilter.includes(opt.value)
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+            {roleFilter.length > 0 && (
+              <button
+                onClick={() => setRoleFilter([])}
+                className="text-xs text-slate-400 hover:text-slate-600 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
               <tr>
@@ -508,7 +542,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
+              {users.filter((u) => roleFilter.length === 0 || roleFilter.includes(u.role)).map((u) => (
                 <tr key={u.id} className="border-t border-slate-100">
                   <td className="px-4 py-2 font-medium text-slate-700">{u.name}</td>
                   <td className="px-4 py-2 text-slate-500">{u.email}</td>
